@@ -34,7 +34,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             Logger.LogInfo("QOLPlugin not detected, using Encyclopedia patch");
             harmony.CreateClassProcessor(typeof(EncyclopediaPatch)).Patch();
         }
-
+        harmony.CreateClassProcessor(typeof(VersionGetterPatch)).Patch();
         Logger.LogInfo($"Independent Option {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
 
@@ -153,7 +153,15 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 }
 
 
-
+[HarmonyPatch(typeof(Application), "version", MethodType.Getter)]
+public class VersionGetterPatch
+{
+    private static void Postfix(ref string __result)
+    {
+        __result += "_independentOption1.0";
+        IndependentOptionPlugin.Logger.LogWarning("Updated game version to " + __result);
+    }
+}
 
 [HarmonyPatch(typeof(Encyclopedia), "AfterLoad")]
 public class EncyclopediaPatch
