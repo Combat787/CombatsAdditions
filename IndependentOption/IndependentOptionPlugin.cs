@@ -1,9 +1,10 @@
-﻿
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -15,19 +16,21 @@ namespace CombatsAdditions;
 public class IndependentOptionPlugin : BaseUnityPlugin
 {
     internal static new ManualLogSource Logger;
+    static bool useQOLPatch = false;
 
     private void Awake()
     {
         Logger = base.Logger;
         var harmony = new Harmony("IndependentOption");
 
-        var useQOLPatch = AppDomain.CurrentDomain.GetAssemblies()
+        useQOLPatch = AppDomain.CurrentDomain.GetAssemblies()
             .Any(assembly => assembly.GetTypes().Any(type => type.Name == "QOLPlugin"));
 
         if (useQOLPatch)
         {
             Logger.LogInfo("QOLPlugin detected, using QOLPlugin patch");
-            harmony.CreateClassProcessor(typeof(ProcessConfigLinesPatch)).Patch();
+            // Dynamically patch QOLPlugin using reflection to avoid type loading issues
+            PatchQOLPlugin(harmony);
         }
         else
         {
@@ -38,13 +41,89 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         Logger.LogInfo($"Independent Option {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
 
+    private void PatchQOLPlugin(Harmony harmony)
+    {
+        try
+        {
+            // Find QOLPlugin type dynamically
+            Type qolPluginType = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => a.GetTypes())
+                .FirstOrDefault(t => t.Name == "QOLPlugin");
+
+            if (qolPluginType == null)
+            {
+                Logger.LogError("QOLPlugin type not found despite detection");
+                return;
+            }
+
+            // Find the ProcessConfigLinesSingleThread method
+            MethodInfo originalMethod = qolPluginType.GetMethod("ProcessConfigLinesSingleThread",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+
+            if (originalMethod == null)
+            {
+                Logger.LogError("ProcessConfigLinesSingleThread method not found");
+                return;
+            }
+
+            // Create postfix method
+            MethodInfo postfixMethod = typeof(IndependentOptionPlugin).GetMethod(nameof(QOLPluginPostfix),
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+
+            // Apply patch
+            harmony.Patch(originalMethod, postfix: new HarmonyMethod(postfixMethod));
+            Logger.LogInfo("Successfully patched QOLPlugin.ProcessConfigLinesSingleThread");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Failed to patch QOLPlugin: {ex}");
+        }
+    }
+
+    private static IEnumerator QOLPluginPostfix(IEnumerator original)
+    {
+        while (original.MoveNext())
+        {
+            yield return original.Current;
+        }
+        SplitHardpoints();
+        ModifyUI();
+        Logger.LogWarning("Hardpoints Split (QOL)");
+    }
 
     public static void ModifyUI()
     {
-        Type type = typeof(QOLPlugin);
-        MethodInfo method = type.GetMethod("FindGameObjectByExactPath",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        GameObject result = (GameObject)method.Invoke(null, ["HardpointSetSelector/HardpointSetDropdown/Template", true]);
+        GameObject result = null;
+        if (useQOLPatch)
+        {
+            // Use reflection to call QOLPlugin's FindGameObjectByExactPath
+            Type qolPluginType = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => a.GetTypes())
+                .FirstOrDefault(t => t.Name == "QOLPlugin");
+
+            if (qolPluginType != null)
+            {
+                MethodInfo method = qolPluginType.GetMethod("FindGameObjectByExactPath",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+
+                if (method != null)
+                {
+                    result = (GameObject)method.Invoke(null, new object[] { "HardpointSetSelector/HardpointSetDropdown/Template", true });
+                }
+            }
+        }
+
+        if (result == null)
+        {
+            result = FindGameObjectByExactPath("HardpointSetSelector/HardpointSetDropdown/Template");
+        }
+
+        if (result == null)
+        {
+            Logger.LogWarning("Could not find HardpointSetDropdown Template");
+            return;
+        }
+
         var transform = result.GetComponent<RectTransform>();
         transform.offsetMin += new Vector2(-60f, 0f);
         transform.offsetMax += new Vector2(60f, 0f);
@@ -150,6 +229,36 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             hardpoints = [.. original.hardpoints]
         };
     }
+    private static string GetFullPath(Transform transform)
+    {
+        string text = transform.name;
+        while (transform.parent != null)
+        {
+            transform = transform.parent;
+            text = transform.name + "/" + text;
+        }
+
+        return text;
+    }
+    public static GameObject FindGameObjectByExactPath(string path)
+    {
+        GameObject gameObject = null;
+        try
+        {
+            gameObject = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject go) => GetFullPath(go.transform) == path);
+        }
+        catch (Exception arg)
+        {
+            Logger.LogWarning($"FindGOByEP error with {path}: {arg}");
+        }
+
+        if (gameObject == null)
+        {
+            Logger.LogDebug("FindGOByEP seach for " + path + " returned null.");
+        }
+
+        return gameObject;
+    }
 }
 
 
@@ -166,31 +275,16 @@ public class VersionGetterPatch
 [HarmonyPatch(typeof(Encyclopedia), "AfterLoad")]
 public class EncyclopediaPatch
 {
-    private static bool Prefix(Encyclopedia __instance)
+    static void Postfix(Encyclopedia __instance)
     {
         IndependentOptionPlugin.SplitHardpoints();
-
-        IndependentOptionPlugin.ModifyUI();
-
-        IndependentOptionPlugin.Logger.LogWarning("Hardpoints Split");
-        return true;
+        DelayedModifyUI();
+        IndependentOptionPlugin.Logger.LogWarning("Hardpoints Split (Encyclopedia)");
     }
-}
 
-[HarmonyPatch(typeof(QOLPlugin), "ProcessConfigLinesSingleThread")]
-public class ProcessConfigLinesPatch
-{
-    static IEnumerator Postfix(IEnumerator original)
+    static async void DelayedModifyUI()
     {
-        while (original.MoveNext())
-        {
-            yield return original.Current;
-        }
-        IndependentOptionPlugin.SplitHardpoints();
-
+        await Task.Delay(3000);
         IndependentOptionPlugin.ModifyUI();
-
-        IndependentOptionPlugin.Logger.LogWarning("Hardpoints Split");
     }
-
 }
