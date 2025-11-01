@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeaponsFramework", "Targeti
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndependentOption", "IndependentOption\IndependentOption.csproj", "{F4247AB6-3A30-40BA-8396-9DEE19B43136}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GravityOption", "GravityOption\GravityOption.csproj", "{4CAAB37E-CAEB-4704-AA93-8A28463D4EAC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{F4247AB6-3A30-40BA-8396-9DEE19B43136}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4247AB6-3A30-40BA-8396-9DEE19B43136}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F4247AB6-3A30-40BA-8396-9DEE19B43136}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4CAAB37E-CAEB-4704-AA93-8A28463D4EAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CAAB37E-CAEB-4704-AA93-8A28463D4EAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CAAB37E-CAEB-4704-AA93-8A28463D4EAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CAAB37E-CAEB-4704-AA93-8A28463D4EAC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
