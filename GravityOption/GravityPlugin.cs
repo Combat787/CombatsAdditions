@@ -73,7 +73,7 @@ public class GravityPlugin : BaseUnityPlugin
     {
         if (enableMod.Value)
         {
-            Vector3 targetGravity = new(gravityX.Value, gravityY.Value, gravityZ.Value);
+            Vector3 targetGravity = new(gravityX.Value * -9.81f, gravityY.Value * -9.81f, gravityZ.Value * -9.81f);
             if (Physics.gravity != targetGravity)
             {
                 Physics.gravity = targetGravity;
