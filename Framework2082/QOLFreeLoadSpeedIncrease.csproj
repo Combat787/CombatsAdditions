@@ -48,9 +48,6 @@
 		<Reference Include="qol">
 		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.1.dll</HintPath>
 		</Reference>
-		<Reference Include="qol">
-		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.2.dll</HintPath>
-		</Reference>
 		<Reference Include="Rewired_Core">
 			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Rewired_Core.dll</HintPath>
 		</Reference>
