@@ -18,8 +18,8 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 {
     internal static new ManualLogSource Logger;
     public static bool useQOLPatch = false;
-    public static Dictionary<WeaponManager, Dictionary<string, List<int>>> weaponManagerToIndexMap = new Dictionary<WeaponManager, Dictionary<string, List<int>>>();
-    public static Dictionary<WeaponManager, HardpointSet[]> weaponManagerToOriginalSets = new Dictionary<WeaponManager, HardpointSet[]>();
+    public static Dictionary<WeaponManager, Dictionary<string, List<int>>> weaponManagerToIndexMap = [];
+    public static Dictionary<WeaponManager, HardpointSet[]> weaponManagerToOriginalSets = [];
 
     private void Awake()
     {
@@ -144,27 +144,38 @@ public class IndependentOptionPlugin : BaseUnityPlugin
                 aircraft.GetAircraftParameters().StandardLoadouts[i].loadout = newStandardLoadouts[i];
             }
 
-            UpdatePrecludingSets(independentHardpointSets, nameToIndexMap);
-            weaponManager.hardpointSets = [.. independentHardpointSets];
+            UpdatePrecludingSets(independentHardpointSets, nameToIndexMap, weaponManager);
+            weaponManager.hardpointSets = RenamedIndependentHardpointNames(independentHardpointSets);
         }
     }
 
-    private static Dictionary<string, List<int>> BuildNameToIndexMap(WeaponManager weaponManager, List<HardpointSet> independentSets)
+
+    private static HardpointSet[] RenamedIndependentHardpointNames(List<(HardpointSet, string)> independentHardpointSets)
+    {
+        var renamedSets = new List<HardpointSet>();
+        foreach (var (hardpointSet, side) in independentHardpointSets)
+        {
+            if (side != null)
+            {
+                hardpointSet.name = side + " " + hardpointSet.name;
+            }
+        }
+        return [.. independentHardpointSets.Select(x => { return x.Item1; })];
+    }
+
+    private static Dictionary<string, List<int>> BuildNameToIndexMap(WeaponManager weaponManager, List<(HardpointSet, string)> independentSets)
     {
         var map = new Dictionary<string, List<int>>();
 
         for (int i = 0; i < independentSets.Count; i++)
         {
-            var set = independentSets[i];
-            var originalName = set.name.StartsWith("Left ") || set.name.StartsWith("Right ")
-                ? set.name.Substring(set.name.IndexOf(' ') + 1)
-                : set.name;
+            var name = independentSets[i].Item1.name;
 
-            if (!map.ContainsKey(originalName))
+            if (!map.ContainsKey(name))
             {
-                map[originalName] = new List<int>();
+                map[name] = [];
             }
-            map[originalName].Add(i);
+            map[name].Add(i);
         }
 
         return map;
@@ -192,52 +203,45 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         return grouped;
     }
 
-    public static List<HardpointSet> CreateIndependentHardpointSets(Dictionary<string, List<HardpointSet>> grouped)
+    public static List<(HardpointSet, string)> CreateIndependentHardpointSets(Dictionary<string, List<HardpointSet>> grouped)
     {
-        var independentSets = new List<HardpointSet>();
+        var independentSets = new List<(HardpointSet, string)>();
 
         foreach (var group in grouped)
         {
             foreach (var hardpointSet in group.Value)
             {
+                string side = null;
                 if (group.Value.Count > 1)
                 {
-                    var side = GetHardpointSide(hardpointSet);
-                    hardpointSet.name = $"{side} {hardpointSet.name}";
+                    side = GetHardpointSide(hardpointSet);
                 }
-                independentSets.Add(hardpointSet);
+                independentSets.Add((hardpointSet, side));
             }
         }
 
         return independentSets;
     }
-    public static void UpdatePrecludingSets(List<HardpointSet> independentSets, Dictionary<string, List<int>> nameToIndexMap)
+    public static void UpdatePrecludingSets(List<(HardpointSet, string)> independentSets, Dictionary<string, List<int>> nameToIndexMap, WeaponManager weaponManager)
     {
-        foreach (var hardpointSet in independentSets)
+        foreach (var (hardpointSet, side) in independentSets)
         {
             var newPrecludingSets = new List<byte>();
 
-            string currentSide = GetHardpointSide(hardpointSet);
-
             foreach (var setIndex in hardpointSet.precludingHardpointSets)
             {
-                var precludedSet = independentSets[setIndex];
+                var precludedSet = weaponManagerToOriginalSets[weaponManager][setIndex];
                 var precludedName = precludedSet.name;
 
-                string baseName = ExtractBaseName(precludedName);
+                nameToIndexMap.TryGetValue(precludedName, out var indices);
 
-                bool wasSymmetrical = !precludedName.StartsWith("Left ") && !precludedName.StartsWith("Right ");
-
-                if (nameToIndexMap.TryGetValue(baseName, out var indices))
+                foreach (var newIndex in indices)
                 {
-                    foreach (var newIndex in indices)
-                    {
-                        var targetSet = independentSets[newIndex];
+                    var targetSet = independentSets[newIndex];
 
-                        if (wasSymmetrical || targetSet.name.StartsWith(currentSide + " "))
-                        {
-                            newPrecludingSets.Add((byte)newIndex);
-                        }
+                    if (targetSet.Item2 == side || targetSet.Item2 == null || side == null)
+                    {
+                        newPrecludingSets.Add((byte)newIndex);
                     }
                 }
             }
@@ -246,17 +250,8 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         }
     }
 
-    private static string ExtractBaseName(string name)
-    {
-        if (name.StartsWith("Left ") || name.StartsWith("Right "))
-        {
-            return name.Substring(name.IndexOf(' ') + 1);
-        }
-        return name;
-    }
 
-
-    public static List<Loadout> UpdateLoadouts(List<HardpointSet> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
+    public static List<Loadout> UpdateLoadouts(List<(HardpointSet, string)> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
     {
         List<Loadout> newLoadouts = [];
 
