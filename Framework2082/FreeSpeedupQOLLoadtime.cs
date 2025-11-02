@@ -33,7 +33,6 @@ public class QOLPatcher
     }
     private static GameObject FindByPath(Dictionary<string, GameObject> ____pathCache, string path, bool checkCache, bool retrywithrecache)
     {
-        // Check cache first before doing anything else
         if (checkCache && ____pathCache.TryGetValue(path, out var cachedObj))
         {
             if (cachedObj != null)
@@ -106,8 +105,6 @@ public class QOLPatcher
         misses++;
         watch.Stop();
         totalmillis += watch.ElapsedMilliseconds;
-        FreeSpeedupQOLLoadtime.Logger.LogWarning(misses.ToString() + " " + watch.ElapsedMilliseconds + " " + totalmillis);
-        // FreeSpeedupQOLLoadtime.Logger.LogWarning($"Recached {FreeSpeedupQOLLoadtime.rootObjectCache.Count} root object names");
     }
 }
 

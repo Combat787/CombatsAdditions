@@ -40,14 +40,13 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             harmony.CreateClassProcessor(typeof(EncyclopediaPatch)).Patch();
         }
         harmony.CreateClassProcessor(typeof(VersionGetterPatch)).Patch();
-        harmony.CreateClassProcessor(typeof(SavedLoadoutPatch)).Patch(); // Add this line
+        harmony.CreateClassProcessor(typeof(SavedLoadoutPatch)).Patch();
         Logger.LogInfo($"Independent Option {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
     private void PatchQOLPlugin(Harmony harmony)
     {
         try
         {
-            // Find QOLPlugin type dynamically
             Type qolPluginType = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
                 .FirstOrDefault(t => t.Name == "QOLPlugin");
@@ -57,8 +56,6 @@ public class IndependentOptionPlugin : BaseUnityPlugin
                 Logger.LogError("QOLPlugin type not found despite detection");
                 return;
             }
-
-            // Find the ProcessConfigLinesSingleThread method
             MethodInfo originalMethod = qolPluginType.GetMethod("ProcessConfigLinesSingleThread",
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
 
@@ -68,11 +65,9 @@ public class IndependentOptionPlugin : BaseUnityPlugin
                 return;
             }
 
-            // Create postfix method
             MethodInfo postfixMethod = typeof(IndependentOptionPlugin).GetMethod(nameof(QOLPluginPostfix),
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
-            // Apply patch
             harmony.Patch(originalMethod, postfix: new HarmonyMethod(postfixMethod));
             Logger.LogInfo("Successfully patched QOLPlugin.ProcessConfigLinesSingleThread");
         }
@@ -133,7 +128,6 @@ public class IndependentOptionPlugin : BaseUnityPlugin
     {
         foreach (var aircraft in Resources.FindObjectsOfTypeAll<Aircraft>())
         {
-            Logger.LogInfo($"Processing aircraft: {aircraft.name}");
             var weaponManager = aircraft.weaponManager;
             var originalHardpointSets = weaponManager.hardpointSets;
             weaponManagerToOriginalSets[weaponManager] = originalHardpointSets;
@@ -217,24 +211,34 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
         return independentSets;
     }
-
     public static void UpdatePrecludingSets(List<HardpointSet> independentSets, Dictionary<string, List<int>> nameToIndexMap)
     {
         foreach (var hardpointSet in independentSets)
         {
             var newPrecludingSets = new List<byte>();
 
+            string currentSide = GetHardpointSide(hardpointSet);
+
             foreach (var setIndex in hardpointSet.precludingHardpointSets)
             {
-                var originalName = independentSets[setIndex].name;
-                if (originalName.StartsWith("Left ") || originalName.StartsWith("Right "))
-                {
-                    originalName = originalName.Substring(originalName.IndexOf(' ') + 1);
-                }
+                var precludedSet = independentSets[setIndex];
+                var precludedName = precludedSet.name;
 
-                if (nameToIndexMap.TryGetValue(originalName, out var indices))
+                string baseName = ExtractBaseName(precludedName);
+
+                bool wasSymmetrical = !precludedName.StartsWith("Left ") && !precludedName.StartsWith("Right ");
+
+                if (nameToIndexMap.TryGetValue(baseName, out var indices))
                 {
-                    newPrecludingSets.AddRange(indices.Select(x => (byte)x));
+                    foreach (var newIndex in indices)
+                    {
+                        var targetSet = independentSets[newIndex];
+
+                        if (wasSymmetrical || targetSet.name.StartsWith(currentSide + " "))
+                        {
+                            newPrecludingSets.Add((byte)newIndex);
+                        }
+                    }
                 }
             }
 
@@ -242,14 +246,22 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         }
     }
 
+    private static string ExtractBaseName(string name)
+    {
+        if (name.StartsWith("Left ") || name.StartsWith("Right "))
+        {
+            return name.Substring(name.IndexOf(' ') + 1);
+        }
+        return name;
+    }
+
+
     public static List<Loadout> UpdateLoadouts(List<HardpointSet> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
     {
-        Logger.LogInfo($"Updating {loadouts.Count} loadouts with {independentSets.Count} independent hardpoint sets.");
         List<Loadout> newLoadouts = [];
 
         foreach (var loadout in loadouts)
         {
-            Logger.LogInfo($"Processing loadout with {loadout.weapons.Count} weapons.");
             Loadout newLoadout = new()
             {
                 weapons = [.. new WeaponMount[independentSets.Count]]
@@ -262,7 +274,6 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
                 if (nameToIndexMap.TryGetValue(originalName, out var indices))
                 {
-                    Logger.LogInfo($"Processing weapon {loadout.weapons[i]?.name} index {i} to indexes {String.Join(" ",indices)}.");
                     foreach (var newIndex in indices)
                     {
                         newLoadout.weapons[newIndex] = loadout.weapons[i];
@@ -330,22 +341,19 @@ public class SavedLoadoutPatch
 {
     static void Postfix(SavedLoadout __instance, WeaponManager weaponManager, ref Loadout __result)
     {
-        // Check if we have mapping data for this weapon manager
         if (!IndependentOptionPlugin.weaponManagerToIndexMap.TryGetValue(weaponManager, out var nameToIndexMap) ||
             !IndependentOptionPlugin.weaponManagerToOriginalSets.TryGetValue(weaponManager, out var originalSets))
         {
-            return; // No mapping available, use original behavior
+            return;
         }
 
         IndependentOptionPlugin.Logger.LogInfo($"Patching loaded loadout with {__instance.Selected.Count} selected mounts.");
 
-        // Create new expanded loadout
         Loadout newLoadout = new Loadout
         {
             weapons = new List<WeaponMount>(new WeaponMount[weaponManager.hardpointSets.Length])
         };
 
-        // Map from original loadout indices to new independent indices
         for (int i = 0; i < __instance.Selected.Count && i < originalSets.Length; i++)
         {
             var originalName = originalSets[i].name;
