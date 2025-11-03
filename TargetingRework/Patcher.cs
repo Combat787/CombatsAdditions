@@ -1,9 +1,9 @@
 ﻿
 using System.Collections.Generic;
 using System.Reflection;
+using CombatsAdditions;
 using HarmonyLib;
 using UnityEngine;
-using WeaponsFramework;
 
 [HarmonyPatch(typeof(Application), nameof(Application.version), MethodType.Getter)]
 public class VersionGetterPatch

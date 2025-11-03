@@ -5,11 +5,11 @@ using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Logging;
+using CombatsAdditions;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityEngine.Rendering;
-using WeaponsFramework;
 
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 [BepInProcess("NuclearOption.exe")]

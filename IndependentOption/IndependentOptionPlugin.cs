@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -10,6 +9,8 @@ using BepInEx.Logging;
 using HarmonyLib;
 using NuclearOption.SavedMission;
 using UnityEngine;
+using UnityEngine.Assertions.Must;
+using UnityEngine.UIElements;
 
 namespace CombatsAdditions;
 
@@ -104,7 +105,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
                 if (method != null)
                 {
-                    result = (GameObject)method.Invoke(null, new object[] { "HardpointSetSelector/HardpointSetDropdown/Template", true });
+                    result = (GameObject)method.Invoke(null, ["HardpointSetSelector/HardpointSetDropdown/Template", true]);
                 }
             }
         }
@@ -133,6 +134,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             weaponManagerToOriginalSets[weaponManager] = originalHardpointSets;
             var groupedHardpointSets = GroupHardpointsByName(weaponManager);
             var independentHardpointSets = CreateIndependentHardpointSets(groupedHardpointSets);
+            independentHardpointSets.Sort((a, b) => a.Item2.CompareTo(b.Item2));
             var nameToIndexMap = BuildNameToIndexMap(weaponManager, independentHardpointSets);
             weaponManagerToIndexMap[weaponManager] = nameToIndexMap;
 
@@ -150,20 +152,20 @@ public class IndependentOptionPlugin : BaseUnityPlugin
     }
 
 
-    private static HardpointSet[] RenamedIndependentHardpointNames(List<(HardpointSet, string)> independentHardpointSets)
+    private static HardpointSet[] RenamedIndependentHardpointNames(List<(HardpointSet, Side)> independentHardpointSets)
     {
         var renamedSets = new List<HardpointSet>();
         foreach (var (hardpointSet, side) in independentHardpointSets)
         {
-            if (side != null)
+            if (side.name != null)
             {
-                hardpointSet.name = side + " " + hardpointSet.name;
+                hardpointSet.name = side.name + " " + hardpointSet.name;
             }
         }
         return [.. independentHardpointSets.Select(x => { return x.Item1; })];
     }
 
-    private static Dictionary<string, List<int>> BuildNameToIndexMap(WeaponManager weaponManager, List<(HardpointSet, string)> independentSets)
+    private static Dictionary<string, List<int>> BuildNameToIndexMap(WeaponManager weaponManager, List<(HardpointSet, Side)> independentSets)
     {
         var map = new Dictionary<string, List<int>>();
 
@@ -203,26 +205,22 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         return grouped;
     }
 
-    public static List<(HardpointSet, string)> CreateIndependentHardpointSets(Dictionary<string, List<HardpointSet>> grouped)
+    public static List<(HardpointSet, Side)> CreateIndependentHardpointSets(Dictionary<string, List<HardpointSet>> grouped)
     {
-        var independentSets = new List<(HardpointSet, string)>();
+        var independentSets = new List<(HardpointSet, Side)>();
 
         foreach (var group in grouped)
         {
             foreach (var hardpointSet in group.Value)
             {
-                string side = null;
-                if (group.Value.Count > 1)
-                {
-                    side = GetHardpointSide(hardpointSet);
-                }
-                independentSets.Add((hardpointSet, side));
+
+                independentSets.Add((hardpointSet, GetHardpointSide(hardpointSet,group.Value)));
             }
         }
 
         return independentSets;
     }
-    public static void UpdatePrecludingSets(List<(HardpointSet, string)> independentSets, Dictionary<string, List<int>> nameToIndexMap, WeaponManager weaponManager)
+    public static void UpdatePrecludingSets(List<(HardpointSet, Side)> independentSets, Dictionary<string, List<int>> nameToIndexMap, WeaponManager weaponManager)
     {
         foreach (var (hardpointSet, side) in independentSets)
         {
@@ -251,7 +249,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
     }
 
 
-    public static List<Loadout> UpdateLoadouts(List<(HardpointSet, string)> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
+    public static List<Loadout> UpdateLoadouts(List<(HardpointSet, Side)> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
     {
         List<Loadout> newLoadouts = [];
 
@@ -279,10 +277,96 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
         return newLoadouts;
     }
-
-    public static string GetHardpointSide(HardpointSet hardpointSet)
+    public class Side : IComparable<Side>
     {
-        return hardpointSet.hardpoints.First().transform.localPosition.x < 0.0 ? "Left" : "Right";
+        const float epsilon = 0.01f;
+        public Vector3 position;
+        public List<Vector3> relativePoints;
+
+        public string name
+        {
+            get
+            {
+                if (relativePoints == null || relativePoints.Count == 0)
+                {
+                    return null;
+                }
+
+                List<string> nameParts = [];
+
+                var leftPoints = relativePoints.Count(p => p.x < position.x - epsilon);
+                var rightPoints = relativePoints.Count(p => p.x > position.x + epsilon);
+
+                if (leftPoints > 0 && rightPoints == 0)
+                {
+                    nameParts.Add("Right");
+                }
+                else if (rightPoints > 0 && leftPoints == 0)
+                {
+                    nameParts.Add("Left");
+                }
+                else if (leftPoints > 0 && rightPoints > 0)
+                {
+                    nameParts.Add("Center");
+                }
+
+                var backPoints = relativePoints.Count(p => p.z < position.z - epsilon);
+                var frontPoints = relativePoints.Count(p => p.z > position.z + epsilon);
+
+                if (backPoints > 0 && frontPoints == 0)
+                {
+                    nameParts.Add("Front");
+                }
+                else if (frontPoints > 0 && backPoints == 0)
+                {
+                    nameParts.Add("Back");
+                }
+                else if (backPoints > 0 && frontPoints > 0)
+                {
+                    nameParts.Add("Middle");
+                }
+
+                var belowPoints = relativePoints.Count(p => p.y < position.y - epsilon);
+                var abovePoints = relativePoints.Count(p => p.y > position.y + epsilon);
+
+                if (belowPoints > 0 && abovePoints == 0)
+                {
+                    nameParts.Add("Top");
+                }
+                else if (abovePoints > 0 && belowPoints == 0)
+                {
+                    nameParts.Add("Bottom");
+                }
+
+                return string.Join(" ", nameParts);
+            }
+        }
+
+        public int CompareTo(Side other)
+        {
+            int result = CompareWithTolerance(position.x, other.position.x, epsilon);
+            if (result != 0) return result;
+            result = CompareWithTolerance(position.z, other.position.z, epsilon);
+            if (result != 0) return result;
+            return CompareWithTolerance(position.y, other.position.y, epsilon);
+        }
+
+        private static int CompareWithTolerance(float a, float b, float epsilon)
+        {
+            float diff = a - b;
+            if (Math.Abs(diff) < epsilon) return 0;
+            return diff < 0 ? -1 : 1;
+        }
+    }
+
+    public static Side GetHardpointSide(HardpointSet hardpointSet, List<HardpointSet> value)
+    {
+        Side side = new()
+        {
+            position = hardpointSet.hardpoints.First().transform.position,
+            relativePoints = [.. value.Select(x => { return x.hardpoints.First().transform.position; })]
+        };
+        return side;
     }
 
     public static HardpointSet CopyHardpointSet(HardpointSet original)

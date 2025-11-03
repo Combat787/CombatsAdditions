@@ -1,91 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-    <AssemblyName>IndependentOption</AssemblyName>
-    <Product>IndependentOption</Product>
-    <Version>1.0.0</Version>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <LangVersion>latest</LangVersion>
-    <RestoreAdditionalProjectSources>
-      https://api.nuget.org/v3/index.json;
-      https://nuget.bepinex.dev/v3/index.json;
-      https://nuget.samboy.dev/v3/index.json
-    </RestoreAdditionalProjectSources>
-    <RootNamespace>CombatsAdditions</RootNamespace>
-  </PropertyGroup>
-
-
-	<ItemGroup>
-		<PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
-		<PackageReference Include="BepInEx.Core" Version="5.*" />
-		<PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
-		<PackageReference Include="UnityEngine.Modules" Version="2022.3.6" IncludeAssets="compile" />
-	</ItemGroup>
+	<Import Project="..\Shared.props" />
 
 	<PropertyGroup>
-		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<AssemblyName>IndependentOption</AssemblyName>
+		<Product>Independent Option</Product>
+		<RootNamespace>CombatsAdditions</RootNamespace>
 	</PropertyGroup>
-
-	<ItemGroup>
-		<Reference Include="Assembly-CSharp">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Assembly-CSharp.dll</HintPath>
-		</Reference>
-		<Reference Include="Assembly-CSharp-firstpass">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
-		</Reference>
-		<Reference Include="com.rlabrecque.steamworks.net">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\com.rlabrecque.steamworks.net.dll</HintPath>
-		</Reference>
-		<Reference Include="Mirage">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Mirage.dll</HintPath>
-		</Reference>
-		<Reference Include="Mirage.SocketLayer">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Mirage.SocketLayer.dll</HintPath>
-		</Reference>
-		<Reference Include="Mirage.SteamworksSocket">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Mirage.SteamworksSocket.dll</HintPath>
-		</Reference>
-		<Reference Include="qol">
-			<HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.1.dll</HintPath>
-		</Reference>
-		<Reference Include="qol">
-			<HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.2.dll</HintPath>
-		</Reference>
-		<Reference Include="Rewired_Core">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Rewired_Core.dll</HintPath>
-		</Reference>
-		<Reference Include="Unity.Mathematics">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Unity.Mathematics.dll</HintPath>
-		</Reference>
-		<Reference Include="Unity.TextMeshPro">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\Unity.TextMeshPro.dll</HintPath>
-		</Reference>
-		<Reference Include="UnityEngine.UI">
-			<HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\UnityEngine.UI.dll</HintPath>
-		</Reference>
-	</ItemGroup>
-
-	<PropertyGroup>
-		<BepInExPluginsPath>$(NUCLEAR_OPTION_PATH)\BepInEx\plugins</BepInExPluginsPath>
-		<BackupPath>$(MSBuildProjectDirectory)\..\modBuilds</BackupPath>
-		<NuGetAuditMode>direct</NuGetAuditMode>
-		<RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
-	</PropertyGroup>
-
-	<Target Name="movetoNOfolder" AfterTargets="Build">
-		<Message Text="Copying $(TargetFileName) to BepInEx plugins folder..." Importance="high" Condition="'$(NUCLEAR_OPTION_PATH)' != '' AND Exists('$(BepInExPluginsPath)')" />
-		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExPluginsPath)" Condition="'$(NUCLEAR_OPTION_PATH)' != '' AND Exists('$(BepInExPluginsPath)')" />
-		<Message Text="Successfully deployed to: $(BepInExPluginsPath)\$(TargetFileName)" Importance="high" Condition="'$(NUCLEAR_OPTION_PATH)' != '' AND Exists('$(BepInExPluginsPath)')" />
-
-		<Message Text="Copying $(TargetFileName) to modBuilds folder..." Importance="high" />
-		<MakeDir Directories="$(BackupPath)" Condition="!Exists('$(BackupPath)')" />
-		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BackupPath)" />
-		<Message Text="Successfully backed up to: $(BackupPath)\$(TargetFileName)" Importance="high" />
-	</Target>
-
-
-	<ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
-		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
-	</ItemGroup>
 </Project>
