@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<Import Project="..\Shared.props" />
+
+	<PropertyGroup>
+		<AssemblyName>Tests</AssemblyName>
+		<Product>Tests</Product>
+		<RootNamespace>CombatsAdditions</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="qol">
+			<HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.1.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+</Project>

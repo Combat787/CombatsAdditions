@@ -2,15 +2,18 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using MonoMod.Utils;
 using NuclearOption.SavedMission;
+using TMPro;
 using UnityEngine;
-using UnityEngine.Assertions.Must;
-using UnityEngine.UIElements;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace CombatsAdditions;
 
@@ -44,6 +47,9 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         harmony.CreateClassProcessor(typeof(SavedLoadoutPatch)).Patch();
         Logger.LogInfo($"Independent Option {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
+
+
+
     private void PatchQOLPlugin(Harmony harmony)
     {
         try
@@ -91,13 +97,12 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
     public static void ModifyUI()
     {
-        GameObject result = null;
+        GameObject hardpointSetDropdown = null;
         if (useQOLPatch)
         {
             Type qolPluginType = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
                 .FirstOrDefault(t => t.Name == "QOLPlugin");
-
             if (qolPluginType != null)
             {
                 MethodInfo method = qolPluginType.GetMethod("FindGameObjectByExactPath",
@@ -105,23 +110,28 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
                 if (method != null)
                 {
-                    result = (GameObject)method.Invoke(null, ["HardpointSetSelector/HardpointSetDropdown/Template", true]);
+                    hardpointSetDropdown = (GameObject)method.Invoke(null, ["HardpointSetSelector", true]);
                 }
             }
         }
 
-        if (result == null)
+        if (hardpointSetDropdown == null)
         {
-            result = FindGameObjectByExactPath("HardpointSetSelector/HardpointSetDropdown/Template");
+            hardpointSetDropdown = FindGameObjectByExactPath("HardpointSetSelector");
         }
 
-        if (result == null)
+        if (hardpointSetDropdown == null)
         {
             Logger.LogWarning("Could not find HardpointSetDropdown Template");
             return;
         }
 
-        var transform = result.GetComponent<RectTransform>();
+        var hardpointSetDropdownTemplate = hardpointSetDropdown.transform.Find("HardpointSetDropdown/Template").gameObject;
+
+        hardpointSetDropdown.AddComponent<WeaponSelectorEvents>();
+
+
+        var transform = hardpointSetDropdownTemplate.GetComponent<RectTransform>();
         transform.offsetMin += new Vector2(-60f, 0f);
         transform.offsetMax += new Vector2(60f, 0f);
     }
@@ -237,9 +247,10 @@ public class IndependentOptionPlugin : BaseUnityPlugin
                 {
                     var targetSet = independentSets[newIndex];
 
-                    if (targetSet.Item2 == side || targetSet.Item2 == null || side == null)
+                    if (AreSidesCompatible(side, targetSet.Item2))
                     {
                         newPrecludingSets.Add((byte)newIndex);
+                        Logger.LogInfo($"Mapping preclusion from original set {precludedName} to independent set {targetSet.Item1.name}");
                     }
                 }
             }
@@ -248,6 +259,43 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         }
     }
 
+    private static bool AreSidesCompatible(Side side1, Side side2)
+    {
+        if (side1 == null || side2 == null)
+            return true;
+
+        string name1 = side1.name;
+        string name2 = side2.name;
+
+        if (string.IsNullOrEmpty(name1) || string.IsNullOrEmpty(name2))
+            return true;
+
+        string[] parts1 = name1.Split(' ');
+        string[] parts2 = name2.Split(' ');
+
+        return parts1.Intersect(parts2).Any() || !DoPartsConflict(parts1, parts2);
+    }
+
+    private static bool DoPartsConflict(string[] parts1, string[] parts2)
+    {
+        string[] leftRight = { "Left", "Right", "Center" };
+        string[] frontBack = { "Front", "Back", "Middle" };
+        string[] topBottom = { "Top", "Bottom" };
+
+        if (HasConflictInDimension(parts1, parts2, leftRight)) return true;
+        if (HasConflictInDimension(parts1, parts2, frontBack)) return true;
+        if (HasConflictInDimension(parts1, parts2, topBottom)) return true;
+
+        return false;
+    }
+
+    private static bool HasConflictInDimension(string[] parts1, string[] parts2, string[] dimension)
+    {
+        var dim1 = parts1.FirstOrDefault(p => dimension.Contains(p));
+        var dim2 = parts2.FirstOrDefault(p => dimension.Contains(p));
+
+        return dim1 != null && dim2 != null && dim1 != dim2;
+    }
 
     public static List<Loadout> UpdateLoadouts(List<(HardpointSet, Side)> independentSets, Dictionary<string, List<int>> nameToIndexMap, List<Loadout> loadouts, HardpointSet[] originalHardpointSets)
     {
@@ -351,6 +399,24 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             return CompareWithTolerance(position.y, other.position.y, epsilon);
         }
 
+        public override bool Equals(object obj)
+        {
+            if (obj is Side other)
+            {
+                return CompareTo(other) == 0;
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(
+                Math.Round(position.x / epsilon),
+                Math.Round(position.y / epsilon),
+                Math.Round(position.z / epsilon)
+            );
+        }
+
         private static int CompareWithTolerance(float a, float b, float epsilon)
         {
             float diff = a - b;
@@ -412,6 +478,22 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         }
 
         return gameObject;
+    }
+
+
+    public static WeaponMount GetMount(List<WeaponMount> legalWeaponsCache, string displayName)
+    {
+        if (displayName == "Empty")
+        {
+            return null;
+        }
+        WeaponMount weaponMount = legalWeaponsCache.Find(obj => obj.mountName == displayName);
+
+        if (weaponMount == null)
+        {
+            Debug.LogError("Couldn't find mount for displayName " + displayName);
+        }
+        return weaponMount;
     }
 }
 
@@ -483,3 +565,194 @@ public class EncyclopediaPatch
         IndependentOptionPlugin.ModifyUI();
     }
 }
+
+public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    private bool hovering = false;
+    private GameObject line;
+    private RectTransform lineRect;
+    private Image lineImage;
+    private GameObject label;
+    private Image labelImage;
+    private Transform hardpoint;
+    private Canvas canvas;
+    private RectTransform canvasRect;
+    private TMP_Dropdown dropdown;
+    private WeaponSelector weaponSelector;
+    private AircraftSelectionMenu selectionMenu;
+    private RectTransform labelRect;
+    private RectTransform selectorRect;
+    private float targetAlpha = 0f;
+    private float currentAlpha = 0f;
+    private Color lineColorBase = new Color(0.92f, 0.92f, 0.97f, 1f);
+    private Color labelColorBase = new Color(1f, 1f, 1f, 0.75f);
+
+    void Start()
+    {
+        canvas = GetComponentInParent<Canvas>();
+        canvasRect = canvas.GetComponent<RectTransform>();
+        selectorRect = GetComponent<RectTransform>();
+
+        line = new GameObject("UILine");
+        line.transform.SetParent(canvas.transform, false);
+        lineRect = line.AddComponent<RectTransform>();
+        lineRect.pivot = new Vector2(0.5f, 0.5f);
+        lineImage = line.AddComponent<Image>();
+
+        int w = 64;
+        Texture2D t = new Texture2D(w, 1);
+        for (int x = 0; x < w; x++)
+        {
+            float d = Mathf.Clamp01((float)x / (w - 1));
+            float a = Mathf.SmoothStep(0f, 1f, d) * Mathf.SmoothStep(0f, 1f, 1f - d);
+            t.SetPixel(x, 0, new Color(lineColorBase.r, lineColorBase.g, lineColorBase.b, a));
+        }
+        t.filterMode = FilterMode.Bilinear;
+        t.Apply();
+        lineImage.sprite = Sprite.Create(t, new Rect(0, 0, w, 1), new Vector2(0.5f, 0.5f));
+
+        label = new GameObject("HardpointLabel");
+        label.transform.SetParent(canvas.transform, false);
+        labelRect = label.AddComponent<RectTransform>();
+        labelRect.sizeDelta = new Vector2(20f, 20f);
+        labelImage = label.AddComponent<Image>();
+
+        int size = 32;
+        Texture2D dot = new Texture2D(size, size);
+        Vector2 center = new Vector2(size / 2f, size / 2f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dist = Vector2.Distance(new Vector2(x, y), center) / (size / 2f);
+                float a = Mathf.Clamp01(1f - Mathf.Pow(dist, 1.5f)) * 0.65f;
+                float v = Mathf.Lerp(0.80f, 1.0f, 1f - dist);
+                dot.SetPixel(x, y, new Color(v, v, v, a));
+            }
+        }
+        dot.filterMode = FilterMode.Bilinear;
+        dot.Apply();
+        labelImage.sprite = Sprite.Create(dot, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+
+        weaponSelector = GetComponent<WeaponSelector>();
+        hardpoint = ReflectionHelper.GetField<HardpointSet>(weaponSelector, "hardpointSet").hardpoints.First().transform;
+        selectionMenu = ReflectionHelper.GetField<AircraftSelectionMenu>(weaponSelector, "selectionMenu");
+        dropdown = weaponSelector.weaponOptions;
+
+        if (dropdown.template != null)
+        {
+            Toggle itemToggle = dropdown.template.GetComponentInChildren<Toggle>();
+            if (itemToggle != null && itemToggle.GetComponent<WeaponDropdownEvents>() == null)
+            {
+                itemToggle.gameObject.AddComponent<WeaponDropdownEvents>();
+                itemToggle.gameObject.GetComponent<WeaponDropdownEvents>().weaponSelector = weaponSelector;
+                itemToggle.gameObject.GetComponent<WeaponDropdownEvents>().selectionMenu = selectionMenu;
+            }
+        }
+
+        line.SetActive(false);
+        label.SetActive(false);
+    }
+
+    void Update()
+    {
+        if (hardpoint != null && (hovering || dropdown.IsExpanded))
+        {
+            targetAlpha = 1f;
+
+            if (!line.activeSelf)
+            {
+                line.SetActive(true);
+                label.SetActive(true);
+            }
+
+            Vector2 hardpointScreenPos = Camera.main.WorldToScreenPoint(hardpoint.position);
+            Vector2 selectorScreenPos = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, selectorRect.position);
+
+            Vector2 hardpointCanvasPos;
+            Vector2 selectorCanvasPos;
+
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, hardpointScreenPos, canvas.worldCamera, out hardpointCanvasPos);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, selectorScreenPos, canvas.worldCamera, out selectorCanvasPos);
+
+            labelRect.anchoredPosition = hardpointCanvasPos;
+
+            Vector2 diff = hardpointCanvasPos - selectorCanvasPos;
+            float length = diff.magnitude;
+            float angle = Mathf.Atan2(diff.y, diff.x) * Mathf.Rad2Deg;
+
+            lineRect.anchoredPosition = (hardpointCanvasPos + selectorCanvasPos) * 0.5f;
+            lineRect.sizeDelta = new Vector2(length, 4f);
+            lineRect.rotation = Quaternion.Euler(0f, 0f, angle);
+        }
+        else
+        {
+            targetAlpha = 0f;
+        }
+
+        currentAlpha = Mathf.Lerp(currentAlpha, targetAlpha, Time.deltaTime * 12f);
+
+        lineImage.color = new Color(lineColorBase.r, lineColorBase.g, lineColorBase.b, currentAlpha);
+        labelImage.color = new Color(labelColorBase.r, labelColorBase.g, labelColorBase.b, currentAlpha);
+
+        if (currentAlpha < 0.01f && line.activeSelf)
+        {
+            line.SetActive(false);
+            label.SetActive(false);
+        }
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        hovering = true;
+        var mount = weaponSelector != null ? weaponSelector.GetMount() : null;
+        if (selectionMenu != null) selectionMenu.DisplayInfo(mount != null ? mount.info : null);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        hovering = false;
+        if (selectionMenu != null) selectionMenu.DisplayInfo(null);
+    }
+
+    void OnDestroy()
+    {
+        if (line != null) Destroy(line);
+        if (label != null) Destroy(label);
+    }
+}
+
+public class WeaponDropdownEvents : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    private TMP_Dropdown dropdown;
+    private TMP_Text itemLabel;
+    public WeaponSelector weaponSelector;
+    public AircraftSelectionMenu selectionMenu;
+
+    void Start()
+    {
+        dropdown = GetComponentInParent<TMP_Dropdown>();
+        itemLabel = transform.Find("Item Label")?.GetComponent<TMP_Text>();
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (dropdown != null)
+        {
+            int itemIndex = transform.GetSiblingIndex();
+            if (itemIndex < dropdown.options.Count)
+            {
+                var option = dropdown.options[itemIndex];
+                selectionMenu.DisplayInfo(IndependentOptionPlugin.GetMount(ReflectionHelper.GetField<List<WeaponMount>>(weaponSelector, "legalWeaponsCache"),option.text).info);
+            }
+        }
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        selectionMenu.DisplayInfo(null);
+    }
+
+
+}
+
