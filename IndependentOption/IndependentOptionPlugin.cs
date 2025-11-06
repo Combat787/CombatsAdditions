@@ -614,7 +614,7 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
         label = new GameObject("HardpointLabel");
         label.transform.SetParent(canvas.transform, false);
         labelRect = label.AddComponent<RectTransform>();
-        labelRect.sizeDelta = new Vector2(20f, 20f);
+        labelRect.sizeDelta = new Vector2(12f, 12f);
         labelImage = label.AddComponent<Image>();
 
         int size = 32;
@@ -705,7 +705,7 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
     public void OnPointerEnter(PointerEventData eventData)
     {
         hovering = true;
-        var mount = weaponSelector != null ? weaponSelector.GetMount() : null;
+        var mount = weaponSelector?.GetMount();
         if (selectionMenu != null) selectionMenu.DisplayInfo(mount != null ? mount.info : null);
     }
 
@@ -737,17 +737,19 @@ public class WeaponDropdownEvents : MonoBehaviour, IPointerEnterHandler, IPointe
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (dropdown != null)
+        if (dropdown != null && itemLabel != null)
         {
-            int itemIndex = transform.GetSiblingIndex();
-            if (itemIndex < dropdown.options.Count)
+            string optionText = itemLabel.text;
+
+            var legalWeapons = ReflectionHelper.GetField<List<WeaponMount>>(weaponSelector, "legalWeaponsCache");
+            var mount = IndependentOptionPlugin.GetMount(legalWeapons, optionText);
+
+            if (mount != null && selectionMenu != null)
             {
-                var option = dropdown.options[itemIndex];
-                selectionMenu.DisplayInfo(IndependentOptionPlugin.GetMount(ReflectionHelper.GetField<List<WeaponMount>>(weaponSelector, "legalWeaponsCache"),option.text).info);
+                selectionMenu.DisplayInfo(mount.info);
             }
         }
     }
-
     public void OnPointerExit(PointerEventData eventData)
     {
         selectionMenu.DisplayInfo(null);
