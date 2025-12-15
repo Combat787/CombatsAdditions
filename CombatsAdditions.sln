@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36401.2
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QOLFreeLoadSpeedIncrease", "Framework2082\QOLFreeLoadSpeedIncrease.csproj", "{1BD9B802-7481-4D0E-B715-FF9BE8DAEF32}"
 EndProject
@@ -17,6 +17,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configuration", "Configurat
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{16266EC2-B82E-48D9-9B85-9B79CCBE1BE0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Loader98", "Loader98\Loader98.csproj", "{C957298B-D935-45E4-BEDC-F501D3EC45F2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +46,10 @@ Global
 		{16266EC2-B82E-48D9-9B85-9B79CCBE1BE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{16266EC2-B82E-48D9-9B85-9B79CCBE1BE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{16266EC2-B82E-48D9-9B85-9B79CCBE1BE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C957298B-D935-45E4-BEDC-F501D3EC45F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C957298B-D935-45E4-BEDC-F501D3EC45F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C957298B-D935-45E4-BEDC-F501D3EC45F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C957298B-D935-45E4-BEDC-F501D3EC45F2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

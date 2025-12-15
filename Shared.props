@@ -57,8 +57,16 @@
     <Reference Include="UnityEngine.UI">
       <HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\UnityEngine.UI.dll</HintPath>
     </Reference>
+	  <Reference Include="UniTask">
+		  <HintPath>$(NUCLEAR_OPTION_PATH)\NuclearOption_Data\Managed\UniTask.dll</HintPath>
+	  </Reference>
+	  <Reference Include="qol">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Nuclear Option\BepInEx\plugins\qol_1.1.5.4b1.dll</HintPath>
+	  </Reference>
   </ItemGroup>
-
+	
+	
+	
   <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
   </ItemGroup>

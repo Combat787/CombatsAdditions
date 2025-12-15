@@ -2,8 +2,8 @@
 	<Import Project="..\Shared.props" />
 
 	<PropertyGroup>
-		<AssemblyName>Tests</AssemblyName>
-		<Product>Tests</Product>
+		<AssemblyName>Loader98</AssemblyName>
+		<Product>Loader98</Product>
 		<RootNamespace>CombatsAdditions</RootNamespace>
 	</PropertyGroup>
 </Project>

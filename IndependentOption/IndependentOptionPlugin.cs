@@ -9,6 +9,7 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using MonoMod.Utils;
+using NuclearOption.MissionEditorScripts;
 using NuclearOption.SavedMission;
 using TMPro;
 using UnityEngine;
@@ -24,6 +25,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
     public static bool useQOLPatch = false;
     public static Dictionary<WeaponManager, Dictionary<string, List<int>>> weaponManagerToIndexMap = [];
     public static Dictionary<WeaponManager, HardpointSet[]> weaponManagerToOriginalSets = [];
+    public static AircraftSelectionMenu cachedSelectionMenu;
 
     private void Awake()
     {
@@ -45,10 +47,11 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         }
         harmony.CreateClassProcessor(typeof(VersionGetterPatch)).Patch();
         harmony.CreateClassProcessor(typeof(SavedLoadoutPatch)).Patch();
+
+        harmony.CreateClassProcessor(typeof(AircraftSelectionMenuInitializePatch)).Patch();
+
         Logger.LogInfo($"Independent Option {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
-
-
 
     private void PatchQOLPlugin(Harmony harmony)
     {
@@ -91,50 +94,43 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             yield return original.Current;
         }
         SplitHardpoints();
-        ModifyUI();
         Logger.LogWarning("Hardpoints Split (QOL)");
     }
 
-    public static void ModifyUI()
+    public static void ModifyWeaponSelectorPrefab(WeaponSelector weaponSelectorPrefab)
     {
-        GameObject hardpointSetDropdown = null;
-        if (useQOLPatch)
+        if (weaponSelectorPrefab == null)
         {
-            Type qolPluginType = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => a.GetTypes())
-                .FirstOrDefault(t => t.Name == "QOLPlugin");
-            if (qolPluginType != null)
-            {
-                MethodInfo method = qolPluginType.GetMethod("FindGameObjectByExactPath",
-                    BindingFlags.NonPublic | BindingFlags.Static);
-
-                if (method != null)
-                {
-                    hardpointSetDropdown = (GameObject)method.Invoke(null, ["HardpointSetSelector", true]);
-                }
-            }
-        }
-
-        if (hardpointSetDropdown == null)
-        {
-            hardpointSetDropdown = FindGameObjectByExactPath("HardpointSetSelector");
-        }
-
-        if (hardpointSetDropdown == null)
-        {
-            Logger.LogWarning("Could not find HardpointSetDropdown Template");
+            Logger.LogWarning("WeaponSelector Prefab is null. Cannot apply UI template changes.");
             return;
         }
 
-        var hardpointSetDropdownTemplate = hardpointSetDropdown.transform.Find("HardpointSetDropdown/Template").gameObject;
+        var hardpointSetDropdownTemplate = weaponSelectorPrefab.transform.Find("HardpointSetDropdown/Template")?.gameObject;
 
-        hardpointSetDropdown.AddComponent<WeaponSelectorEvents>();
+        if (hardpointSetDropdownTemplate == null)
+        {
+            Logger.LogWarning("HardpointSetDropdown/Template not found in WeaponSelector Prefab.");
+            return;
+        }
 
+        if (weaponSelectorPrefab.GetComponent<WeaponSelectorEvents>() == null)
+        {
+            weaponSelectorPrefab.gameObject.AddComponent<WeaponSelectorEvents>();
+            Logger.LogInfo("Added WeaponSelectorEvents to WeaponSelector Prefab.");
+        }
 
-        var transform = hardpointSetDropdownTemplate.GetComponent<RectTransform>();
-        transform.offsetMin += new Vector2(-60f, 0f);
-        transform.offsetMax += new Vector2(60f, 0f);
+        var rectTransform = hardpointSetDropdownTemplate.GetComponent<RectTransform>();
+
+        if (rectTransform.offsetMin.x > -60f)
+        {
+            rectTransform.offsetMin += new Vector2(-60f, 0f);
+            rectTransform.offsetMax += new Vector2(60f, 0f);
+            Logger.LogInfo("Widen UI element in template.");
+        }
+
+        Logger.LogInfo("WeaponSelector Prefab template modification complete.");
     }
+
     public static void SplitHardpoints()
     {
         foreach (var aircraft in Resources.FindObjectsOfTypeAll<Aircraft>())
@@ -160,7 +156,6 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             weaponManager.hardpointSets = RenamedIndependentHardpointNames(independentHardpointSets);
         }
     }
-
 
     private static HardpointSet[] RenamedIndependentHardpointNames(List<(HardpointSet, Side)> independentHardpointSets)
     {
@@ -223,13 +218,13 @@ public class IndependentOptionPlugin : BaseUnityPlugin
         {
             foreach (var hardpointSet in group.Value)
             {
-
-                independentSets.Add((hardpointSet, GetHardpointSide(hardpointSet,group.Value)));
+                independentSets.Add((hardpointSet, GetHardpointSide(hardpointSet, group.Value)));
             }
         }
 
         return independentSets;
     }
+
     public static void UpdatePrecludingSets(List<(HardpointSet, Side)> independentSets, Dictionary<string, List<int>> nameToIndexMap, WeaponManager weaponManager)
     {
         foreach (var (hardpointSet, side) in independentSets)
@@ -325,6 +320,7 @@ public class IndependentOptionPlugin : BaseUnityPlugin
 
         return newLoadouts;
     }
+
     public class Side : IComparable<Side>
     {
         const float epsilon = 0.01f;
@@ -449,37 +445,6 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             hardpoints = [.. original.hardpoints]
         };
     }
-    private static string GetFullPath(Transform transform)
-    {
-        string text = transform.name;
-        while (transform.parent != null)
-        {
-            transform = transform.parent;
-            text = transform.name + "/" + text;
-        }
-
-        return text;
-    }
-    public static GameObject FindGameObjectByExactPath(string path)
-    {
-        GameObject gameObject = null;
-        try
-        {
-            gameObject = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject go) => GetFullPath(go.transform) == path);
-        }
-        catch (Exception arg)
-        {
-            Logger.LogWarning($"FindGOByEP error with {path}: {arg}");
-        }
-
-        if (gameObject == null)
-        {
-            Logger.LogDebug("FindGOByEP seach for " + path + " returned null.");
-        }
-
-        return gameObject;
-    }
-
 
     public static WeaponMount GetMount(List<WeaponMount> legalWeaponsCache, string displayName)
     {
@@ -494,6 +459,21 @@ public class IndependentOptionPlugin : BaseUnityPlugin
             Debug.LogError("Couldn't find mount for displayName " + displayName);
         }
         return weaponMount;
+    }
+}
+
+[HarmonyPatch(typeof(AircraftSelectionMenu), nameof(AircraftSelectionMenu.Initialize))]
+public static class AircraftSelectionMenuInitializePatch
+{
+    static void Prefix(AircraftSelectionMenu __instance)
+    {
+        IndependentOptionPlugin.cachedSelectionMenu = __instance;
+        IndependentOptionPlugin.ModifyWeaponSelectorPrefab(
+            Traverse.Create(__instance)
+            .Field("weaponSelectionPrefab")
+            .GetValue<GameObject>()
+            .GetComponent<WeaponSelector>()
+            );
     }
 }
 
@@ -537,8 +517,6 @@ public class SavedLoadoutPatch
     }
 }
 
-
-
 [HarmonyPatch(typeof(Application), "version", MethodType.Getter)]
 public class VersionGetterPatch
 {
@@ -549,39 +527,31 @@ public class VersionGetterPatch
     }
 }
 
-[HarmonyPatch(typeof(Encyclopedia), "AfterLoad")]
+[HarmonyPatch(typeof(Encyclopedia), "AfterLoad", new System.Type[] { })]
 public class EncyclopediaPatch
 {
     static void Postfix(Encyclopedia __instance)
     {
         IndependentOptionPlugin.SplitHardpoints();
-        DelayedModifyUI();
         IndependentOptionPlugin.Logger.LogWarning("Hardpoints Split (Encyclopedia)");
-    }
-
-    static async void DelayedModifyUI()
-    {
-        await Task.Delay(3000);
-        IndependentOptionPlugin.ModifyUI();
     }
 }
 
 public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
-    private bool hovering = false;
+    private bool isHovering = false;
     private GameObject line;
-    private RectTransform lineRect;
+    private RectTransform lineRectTransform;
     private Image lineImage;
     private GameObject label;
     private Image labelImage;
-    private Transform hardpoint;
-    private Canvas canvas;
-    private RectTransform canvasRect;
+    private Transform hardpointTransform;
+    private Canvas parentCanvas;
+    private RectTransform canvasRectTransform;
     private TMP_Dropdown dropdown;
     private WeaponSelector weaponSelector;
-    private AircraftSelectionMenu selectionMenu;
-    private RectTransform labelRect;
-    private RectTransform selectorRect;
+    private RectTransform labelRectTransform;
+    private RectTransform selectorRectTransform;
     private float targetAlpha = 0f;
     private float currentAlpha = 0f;
     private Color lineColorBase = new Color(0.92f, 0.92f, 0.97f, 1f);
@@ -589,45 +559,46 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
 
     void Start()
     {
-        canvas = GetComponentInParent<Canvas>();
-        canvasRect = canvas.GetComponent<RectTransform>();
-        selectorRect = GetComponent<RectTransform>();
+        IndependentOptionPlugin.Logger.LogInfo("WeaponSelectorEvents Start");
+        parentCanvas = GetComponentInParent<Canvas>();
+        canvasRectTransform = parentCanvas.GetComponent<RectTransform>();
+        selectorRectTransform = GetComponent<RectTransform>();
 
         line = new GameObject("UILine");
-        line.transform.SetParent(canvas.transform, false);
-        lineRect = line.AddComponent<RectTransform>();
-        lineRect.pivot = new Vector2(0.5f, 0.5f);
+        line.transform.SetParent(parentCanvas.transform, false);
+        lineRectTransform = line.AddComponent<RectTransform>();
+        lineRectTransform.pivot = new Vector2(0.5f, 0.5f);
         lineImage = line.AddComponent<Image>();
 
-        int w = 64;
-        Texture2D t = new Texture2D(w, 1);
-        for (int x = 0; x < w; x++)
+        int width = 64;
+        Texture2D texture = new Texture2D(width, 1);
+        for (int x = 0; x < width; x++)
         {
-            float d = Mathf.Clamp01((float)x / (w - 1));
-            float a = Mathf.SmoothStep(0f, 1f, d) * Mathf.SmoothStep(0f, 1f, 1f - d);
-            t.SetPixel(x, 0, new Color(lineColorBase.r, lineColorBase.g, lineColorBase.b, a));
+            float distance = Mathf.Clamp01((float)x / (width - 1));
+            float alpha = Mathf.SmoothStep(0f, 1f, distance) * Mathf.SmoothStep(0f, 1f, 1f - distance);
+            texture.SetPixel(x, 0, new Color(lineColorBase.r, lineColorBase.g, lineColorBase.b, alpha));
         }
-        t.filterMode = FilterMode.Bilinear;
-        t.Apply();
-        lineImage.sprite = Sprite.Create(t, new Rect(0, 0, w, 1), new Vector2(0.5f, 0.5f));
+        texture.filterMode = FilterMode.Bilinear;
+        texture.Apply();
+        lineImage.sprite = Sprite.Create(texture, new Rect(0, 0, width, 1), new Vector2(0.5f, 0.5f));
 
         label = new GameObject("HardpointLabel");
-        label.transform.SetParent(canvas.transform, false);
-        labelRect = label.AddComponent<RectTransform>();
-        labelRect.sizeDelta = new Vector2(12f, 12f);
+        label.transform.SetParent(parentCanvas.transform, false);
+        labelRectTransform = label.AddComponent<RectTransform>();
+        labelRectTransform.sizeDelta = new Vector2(12f, 12f);
         labelImage = label.AddComponent<Image>();
 
         int size = 32;
-        Texture2D dot = new Texture2D(size, size);
+        Texture2D dot = new(size, size);
         Vector2 center = new Vector2(size / 2f, size / 2f);
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
-                float dist = Vector2.Distance(new Vector2(x, y), center) / (size / 2f);
-                float a = Mathf.Clamp01(1f - Mathf.Pow(dist, 1.5f)) * 0.65f;
-                float v = Mathf.Lerp(0.80f, 1.0f, 1f - dist);
-                dot.SetPixel(x, y, new Color(v, v, v, a));
+                float distance = Vector2.Distance(new Vector2(x, y), center) / (size / 2f);
+                float alpha = Mathf.Clamp01(1f - Mathf.Pow(distance, 1.5f)) * 0.65f;
+                float value = Mathf.Lerp(0.80f, 1.0f, 1f - distance);
+                dot.SetPixel(x, y, new Color(value, value, value, alpha));
             }
         }
         dot.filterMode = FilterMode.Bilinear;
@@ -635,9 +606,8 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
         labelImage.sprite = Sprite.Create(dot, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
 
         weaponSelector = GetComponent<WeaponSelector>();
-        hardpoint = ReflectionHelper.GetField<HardpointSet>(weaponSelector, "hardpointSet").hardpoints.First().transform;
-        selectionMenu = ReflectionHelper.GetField<AircraftSelectionMenu>(weaponSelector, "selectionMenu");
-        dropdown = weaponSelector.weaponOptions;
+        hardpointTransform = Traverse.Create(weaponSelector).Field("hardpointSet").GetValue<HardpointSet>().hardpoints.First().transform;
+        dropdown = Traverse.Create(weaponSelector).Field("dropdown").GetValue<TMP_Dropdown>();
 
         if (dropdown.template != null)
         {
@@ -646,7 +616,6 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
             {
                 itemToggle.gameObject.AddComponent<WeaponDropdownEvents>();
                 itemToggle.gameObject.GetComponent<WeaponDropdownEvents>().weaponSelector = weaponSelector;
-                itemToggle.gameObject.GetComponent<WeaponDropdownEvents>().selectionMenu = selectionMenu;
             }
         }
 
@@ -656,7 +625,8 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
 
     void Update()
     {
-        if (hardpoint != null && (hovering || dropdown.IsExpanded))
+
+        if (hardpointTransform != null && (isHovering || dropdown.IsExpanded))
         {
             targetAlpha = 1f;
 
@@ -666,24 +636,24 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
                 label.SetActive(true);
             }
 
-            Vector2 hardpointScreenPos = Camera.main.WorldToScreenPoint(hardpoint.position);
-            Vector2 selectorScreenPos = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, selectorRect.position);
+            Vector2 hardpointScreenPosition = Camera.main.WorldToScreenPoint(hardpointTransform.position);
+            Vector2 selectorScreenPosition = RectTransformUtility.WorldToScreenPoint(parentCanvas.worldCamera, selectorRectTransform.position);
 
-            Vector2 hardpointCanvasPos;
-            Vector2 selectorCanvasPos;
+            Vector2 hardpointCanvasPosition;
+            Vector2 selectorCanvasPosition;
 
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, hardpointScreenPos, canvas.worldCamera, out hardpointCanvasPos);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, selectorScreenPos, canvas.worldCamera, out selectorCanvasPos);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, hardpointScreenPosition, parentCanvas.worldCamera, out hardpointCanvasPosition);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, selectorScreenPosition, parentCanvas.worldCamera, out selectorCanvasPosition);
 
-            labelRect.anchoredPosition = hardpointCanvasPos;
+            labelRectTransform.anchoredPosition = hardpointCanvasPosition;
 
-            Vector2 diff = hardpointCanvasPos - selectorCanvasPos;
-            float length = diff.magnitude;
-            float angle = Mathf.Atan2(diff.y, diff.x) * Mathf.Rad2Deg;
+            Vector2 difference = hardpointCanvasPosition - selectorCanvasPosition;
+            float length = difference.magnitude;
+            float angle = Mathf.Atan2(difference.y, difference.x) * Mathf.Rad2Deg;
 
-            lineRect.anchoredPosition = (hardpointCanvasPos + selectorCanvasPos) * 0.5f;
-            lineRect.sizeDelta = new Vector2(length, 4f);
-            lineRect.rotation = Quaternion.Euler(0f, 0f, angle);
+            lineRectTransform.anchoredPosition = (hardpointCanvasPosition + selectorCanvasPosition) * 0.5f;
+            lineRectTransform.sizeDelta = new Vector2(length, 4f);
+            lineRectTransform.rotation = Quaternion.Euler(0f, 0f, angle);
         }
         else
         {
@@ -704,19 +674,24 @@ public class WeaponSelectorEvents : MonoBehaviour, IPointerEnterHandler, IPointe
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        hovering = true;
-        var mount = weaponSelector?.GetMount();
-        if (selectionMenu != null) selectionMenu.DisplayInfo(mount != null ? mount.info : null);
+        IndependentOptionPlugin.Logger.LogInfo("WeaponSelectorEvents OnPointerEnter");
+        isHovering = true;
+        var mount = weaponSelector?.GetValue();
+        IndependentOptionPlugin.Logger.LogInfo($"WeaponSelectorEvents OnPointerEnter: cachedSelectionMenu is null: {IndependentOptionPlugin.cachedSelectionMenu == null}");
+        if (IndependentOptionPlugin.cachedSelectionMenu != null) IndependentOptionPlugin.cachedSelectionMenu.DisplayInfo(mount?.info);
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
-        hovering = false;
-        if (selectionMenu != null) selectionMenu.DisplayInfo(null);
+        IndependentOptionPlugin.Logger.LogInfo("WeaponSelectorEvents OnPointerExit");
+        isHovering = false;
+        IndependentOptionPlugin.Logger.LogInfo($"WeaponSelectorEvents OnPointerExit: cachedSelectionMenu is null: {IndependentOptionPlugin.cachedSelectionMenu == null}");
+        if (IndependentOptionPlugin.cachedSelectionMenu != null) IndependentOptionPlugin.cachedSelectionMenu.DisplayInfo(null);
     }
 
     void OnDestroy()
     {
+        IndependentOptionPlugin.Logger.LogInfo("WeaponSelectorEvents OnDestroy");
         if (line != null) Destroy(line);
         if (label != null) Destroy(label);
     }
@@ -727,34 +702,37 @@ public class WeaponDropdownEvents : MonoBehaviour, IPointerEnterHandler, IPointe
     private TMP_Dropdown dropdown;
     private TMP_Text itemLabel;
     public WeaponSelector weaponSelector;
-    public AircraftSelectionMenu selectionMenu;
 
     void Start()
     {
+        IndependentOptionPlugin.Logger.LogInfo("WeaponDropdownEvents Start");
         dropdown = GetComponentInParent<TMP_Dropdown>();
         itemLabel = transform.Find("Item Label")?.GetComponent<TMP_Text>();
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
+        IndependentOptionPlugin.Logger.LogInfo("WeaponDropdownEvents OnPointerEnter");
         if (dropdown != null && itemLabel != null)
         {
             string optionText = itemLabel.text;
 
-            var legalWeapons = ReflectionHelper.GetField<List<WeaponMount>>(weaponSelector, "legalWeaponsCache");
+            var legalWeapons = Traverse.Create(weaponSelector).Field("getCache").GetValue<List<WeaponMount>>();
             var mount = IndependentOptionPlugin.GetMount(legalWeapons, optionText);
 
-            if (mount != null && selectionMenu != null)
+            IndependentOptionPlugin.Logger.LogInfo($"WeaponDropdownEvents OnPointerEnter: cachedSelectionMenu is null: {IndependentOptionPlugin.cachedSelectionMenu == null}");
+            if (mount != null && IndependentOptionPlugin.cachedSelectionMenu != null)
             {
-                selectionMenu.DisplayInfo(mount.info);
+                IndependentOptionPlugin.Logger.LogError(mount.info.description);
+                IndependentOptionPlugin.cachedSelectionMenu.DisplayInfo(mount.info);
             }
         }
     }
     public void OnPointerExit(PointerEventData eventData)
     {
-        selectionMenu.DisplayInfo(null);
+        IndependentOptionPlugin.Logger.LogInfo("WeaponDropdownEvents OnPointerExit");
+        IndependentOptionPlugin.Logger.LogInfo($"WeaponDropdownEvents OnPointerExit: cachedSelectionMenu is null: {IndependentOptionPlugin.cachedSelectionMenu == null}");
+        if (IndependentOptionPlugin.cachedSelectionMenu != null) IndependentOptionPlugin.cachedSelectionMenu.DisplayInfo(null);
     }
-
-
 }
 
